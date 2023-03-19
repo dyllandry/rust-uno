@@ -1,4 +1,5 @@
 mod card;
+mod game;
 
 use crate::card::{Card, Color};
 

@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Color {
     Red,
     Blue,
@@ -19,7 +19,7 @@ impl ToString for Color {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum TurnEffect {
     Skip,
     Reverse,
