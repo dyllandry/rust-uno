@@ -1,12 +1,11 @@
 mod card;
 mod game;
 
-use crate::card::{Card, Color};
+use crate::game::create_deck;
 
 fn main() {
-    let mut card = Card::default();
-    card.number = Some(5);
-    card.color = Some(Color::Red);
-    println!("{}", card);
+    let deck = create_deck();
+    for card in &deck {
+        println!("{}", card);
+    }
 }
-
