@@ -1,8 +1,73 @@
+use rand::{seq::SliceRandom, thread_rng};
+
 use crate::card::{Card, Color, DrawEffect, TurnEffect};
 
 /**
  This mod is for game rules.
 */
+
+pub struct Game {
+    players: Vec<Player>,
+    current_player: i32,
+    deck: Vec<Card>,
+    discard: Vec<Card>,
+}
+
+impl Game {
+    pub fn new(player_count: i32) -> Self {
+        let mut game = Game {
+            current_player: 0,
+            players: Vec::new(),
+            deck: Vec::new(),
+            discard: Vec::new(),
+        };
+
+        game.deck = create_deck();
+        game.deck.shuffle(&mut thread_rng());
+
+        for _ in 0..player_count {
+            let mut player = Player::default();
+            for _ in 0..7 {
+                let card = game.deck.pop().unwrap();
+                player.hand.push(card);
+            }
+            game.players.push(player);
+        }
+        game
+    }
+
+    pub fn input(&self) {
+        // TODO: accept input, do something with it depending on game state
+    }
+
+    pub fn render(&self) {
+        let current_player = &self.players[self.current_player as usize];
+        println!("It is player {}'s turn.", self.current_player);
+
+        println!("Here are your cards:");
+        for (i, card) in current_player.hand.iter().enumerate() {
+            println!("{}) {}", 1+i, card);
+        }
+        // TODO: add drawing a card as the last option
+        println!();
+
+        if let Some(last_played_card) = &self.discard.last() {
+            println!("The last played card was {}", last_played_card);
+        }
+
+        if self.discard.len() == 0 {
+            println!("Type a number to play the first card: ")
+        } else {
+            println!("Type a number to play a card: ")
+        }
+    }
+}
+
+impl Default for Game {
+    fn default() -> Self {
+        Game::new(2)
+    }
+}
 
 pub fn can_play_card(prev_card: &Card, next_card: &Card) -> bool {
     if next_card.wild {
@@ -116,6 +181,11 @@ pub fn create_deck() -> Vec<Card> {
     return deck;
 }
 
+#[derive(Default)]
+pub struct Player {
+    hand: Vec<Card>,
+}
+
 #[cfg(test)]
 mod tests {
     mod can_play_card {
@@ -207,10 +277,7 @@ mod tests {
     }
 
     mod create_deck {
-        use crate::{
-            card::Card,
-            game::create_deck,
-        };
+        use crate::{card::Card, game::create_deck};
 
         #[test]
         fn contains_all_standard_cards() {
@@ -218,134 +285,123 @@ mod tests {
                 strs.iter().map(|str| Card::from(str.clone())).collect()
             }
 
-            let standard_cards: Vec<Card> = create_cards_from_strs(
-                vec![
-                   "blue 0",
-                   "blue 1",
-                   "blue 1",
-                   "blue 2",
-                   "blue 2",
-                   "blue 3",
-                   "blue 3",
-                   "blue 4",
-                   "blue 4",
-                   "blue 5",
-                   "blue 5",
-                   "blue 6",
-                   "blue 6",
-                   "blue 7",
-                   "blue 7",
-                   "blue 8",
-                   "blue 8",
-                   "blue 9",
-                   "blue 9",
-
-                   "red 1",
-                   "red 1",
-                   "red 2",
-                   "red 2",
-                   "red 3",
-                   "red 3",
-                   "red 4",
-                   "red 4",
-                   "red 5",
-                   "red 5",
-                   "red 6",
-                   "red 6",
-                   "red 7",
-                   "red 7",
-                   "red 8",
-                   "red 8",
-                   "red 9",
-                   "red 9",
-
-                   "green 0",
-                   "green 1",
-                   "green 1",
-                   "green 2",
-                   "green 2",
-                   "green 3",
-                   "green 3",
-                   "green 4",
-                   "green 4",
-                   "green 5",
-                   "green 5",
-                   "green 6",
-                   "green 6",
-                   "green 7",
-                   "green 7",
-                   "green 8",
-                   "green 8",
-                   "green 9",
-                   "green 9",
-
-                   "yellow 0",
-                   "yellow 1",
-                   "yellow 1",
-                   "yellow 2",
-                   "yellow 2",
-                   "yellow 3",
-                   "yellow 3",
-                   "yellow 4",
-                   "yellow 4",
-                   "yellow 5",
-                   "yellow 5",
-                   "yellow 6",
-                   "yellow 6",
-                   "yellow 7",
-                   "yellow 7",
-                   "yellow 8",
-                   "yellow 8",
-                   "yellow 9",
-                   "yellow 9",
-
-                   "blue skip",
-                   "blue skip",
-                   "red skip",
-                   "red skip",
-                   "green skip",
-                   "green skip",
-                   "yellow skip",
-                   "yellow skip",
-
-                   "blue reverse",
-                   "blue reverse",
-                   "red reverse",
-                   "red reverse",
-                   "green reverse",
-                   "green reverse",
-                   "yellow reverse",
-                   "yellow reverse",
-
-                   "blue draw2",
-                   "blue draw2",
-                   "red draw2",
-                   "red draw2",
-                   "green draw2",
-                   "green draw2",
-                   "yellow draw2",
-                   "yellow draw2",
-
-                   "wild",
-                   "wild",
-                   "wild",
-                   "wild",
-                   "wild draw4",
-                   "wild draw4",
-                   "wild draw4",
-                   "wild draw4",
-                ]
-            );
+            let standard_cards: Vec<Card> = create_cards_from_strs(vec![
+                "blue 0",
+                "blue 1",
+                "blue 1",
+                "blue 2",
+                "blue 2",
+                "blue 3",
+                "blue 3",
+                "blue 4",
+                "blue 4",
+                "blue 5",
+                "blue 5",
+                "blue 6",
+                "blue 6",
+                "blue 7",
+                "blue 7",
+                "blue 8",
+                "blue 8",
+                "blue 9",
+                "blue 9",
+                "red 1",
+                "red 1",
+                "red 2",
+                "red 2",
+                "red 3",
+                "red 3",
+                "red 4",
+                "red 4",
+                "red 5",
+                "red 5",
+                "red 6",
+                "red 6",
+                "red 7",
+                "red 7",
+                "red 8",
+                "red 8",
+                "red 9",
+                "red 9",
+                "green 0",
+                "green 1",
+                "green 1",
+                "green 2",
+                "green 2",
+                "green 3",
+                "green 3",
+                "green 4",
+                "green 4",
+                "green 5",
+                "green 5",
+                "green 6",
+                "green 6",
+                "green 7",
+                "green 7",
+                "green 8",
+                "green 8",
+                "green 9",
+                "green 9",
+                "yellow 0",
+                "yellow 1",
+                "yellow 1",
+                "yellow 2",
+                "yellow 2",
+                "yellow 3",
+                "yellow 3",
+                "yellow 4",
+                "yellow 4",
+                "yellow 5",
+                "yellow 5",
+                "yellow 6",
+                "yellow 6",
+                "yellow 7",
+                "yellow 7",
+                "yellow 8",
+                "yellow 8",
+                "yellow 9",
+                "yellow 9",
+                "blue skip",
+                "blue skip",
+                "red skip",
+                "red skip",
+                "green skip",
+                "green skip",
+                "yellow skip",
+                "yellow skip",
+                "blue reverse",
+                "blue reverse",
+                "red reverse",
+                "red reverse",
+                "green reverse",
+                "green reverse",
+                "yellow reverse",
+                "yellow reverse",
+                "blue draw2",
+                "blue draw2",
+                "red draw2",
+                "red draw2",
+                "green draw2",
+                "green draw2",
+                "yellow draw2",
+                "yellow draw2",
+                "wild",
+                "wild",
+                "wild",
+                "wild",
+                "wild draw4",
+                "wild draw4",
+                "wild draw4",
+                "wild draw4",
+            ]);
             fn remove_card_or_panic(card_to_remove: &Card, cards: &mut Vec<Card>) {
-                let found_card_position = cards
-                    .iter()
-                    .position(|card: &Card| card == card_to_remove);
+                let found_card_position =
+                    cards.iter().position(|card: &Card| card == card_to_remove);
                 if found_card_position.is_none() {
                     println!("Could not find card: {:?}", card_to_remove);
                 }
                 cards.remove(found_card_position.unwrap());
             }
-
 
             let mut received_cards = create_deck();
 
