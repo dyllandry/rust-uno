@@ -1,3 +1,9 @@
+# Todo
+
+- support drawing a card if you want
+- support turn effects
+- support draw effects
+
 # Designing turn logic
 
 ## start game

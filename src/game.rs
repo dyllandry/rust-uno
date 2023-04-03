@@ -14,6 +14,7 @@ pub struct Uno {
     current_player_index: i32,
     deck: Vec<Card>,
     discard: Vec<Card>,
+    index_of_wild_card_being_played: Option<i32>,
 }
 
 impl Uno {
@@ -23,6 +24,7 @@ impl Uno {
             players: Vec::new(),
             deck: Vec::new(),
             discard: Vec::new(),
+            index_of_wild_card_being_played: None,
         };
 
         game.deck = create_deck();
@@ -40,10 +42,24 @@ impl Uno {
     }
 
     pub fn input(&mut self, input: Input) {
-        // TODO: handle picking wild card color
         let current_player = &mut self.players[self.current_player_index as usize];
+        let mut played_card: Option<Card> = None;
+
         match input {
-            Input::Text(_input_text) => todo!(),
+            Input::Text(input_text) => {
+                if let Some(wild_index) = self.index_of_wild_card_being_played {
+                    let mut wild_card = current_player.hand.remove(wild_index as usize);
+                    match input_text.to_lowercase().as_str() {
+                        "r" => wild_card.color = Some(Color::Red),
+                        "b" => wild_card.color = Some(Color::Blue),
+                        "g" => wild_card.color = Some(Color::Green),
+                        "y" => wild_card.color = Some(Color::Yellow),
+                        _ => return,
+                    }
+                    played_card = Some(wild_card);
+                    self.index_of_wild_card_being_played = None;
+                }
+            }
             Input::Number(input_number) => {
                 let card_to_play = current_player.hand.get((input_number - 1) as usize);
                 if card_to_play.is_none() {
@@ -58,19 +74,27 @@ impl Uno {
                     return;
                 }
 
-                let card_to_play = current_player.hand.remove((input_number - 1) as usize);
-                self.discard.push(card_to_play);
-                if current_player.hand.len() == 1 {
-                    println!("Player {} has uno!", self.current_player_index);
-                } else if current_player.hand.len() == 0 {
-                    println!("Player {} won!", self.current_player_index);
+                if card_to_play.wild {
+                    self.index_of_wild_card_being_played = Some(input_number - 1);
+                    return;
                 }
 
-                if !self.game_over() {
-                    self.current_player_index += 1;
-                    if self.current_player_index == self.players.len().try_into().unwrap() {
-                        self.current_player_index = 0;
-                    }
+                played_card = Some(current_player.hand.remove((input_number - 1) as usize));
+            }
+        }
+
+        if let Some(played_card) = played_card {
+            self.discard.push(played_card);
+            if current_player.hand.len() == 1 {
+                println!("Player {} has uno!", self.current_player_index);
+            } else if current_player.hand.len() == 0 {
+                println!("Player {} won!", self.current_player_index);
+            }
+
+            if !self.game_over() {
+                self.current_player_index += 1;
+                if self.current_player_index == self.players.len().try_into().unwrap() {
+                    self.current_player_index = 0;
                 }
             }
         }
@@ -78,6 +102,13 @@ impl Uno {
 
     pub fn render(&self) {
         let current_player = &self.players[self.current_player_index as usize];
+
+        if self.index_of_wild_card_being_played.is_some() {
+            println!("What color do you want your wild card to be?");
+            println!("Enter one of \"R\", \"B\", \"G\", or \"Y\" to pick a color: ");
+            return;
+        }
+
         // TODO: handle ai players
         // "Player 3 is a computer, press Enter to watch their turn.
         // only print: "AI Player 4 drew 3 cards and played a Red 5"
@@ -253,7 +284,7 @@ mod tests {
             prev_card.color = Some(Color::Blue);
             let mut next_card = Card::default();
             next_card.color = Some(Color::Blue);
-            assert!(can_play_card(&prev_card, &next_card));
+            assert!(can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -262,7 +293,7 @@ mod tests {
             prev_card.color = Some(Color::Blue);
             let mut next_card = Card::default();
             next_card.color = Some(Color::Red);
-            assert!(!can_play_card(&prev_card, &next_card));
+            assert!(!can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -271,7 +302,7 @@ mod tests {
             prev_card.number = Some(5);
             let mut next_card = Card::default();
             next_card.number = Some(5);
-            assert!(can_play_card(&prev_card, &next_card));
+            assert!(can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -280,7 +311,7 @@ mod tests {
             prev_card.number = Some(5);
             let mut next_card = Card::default();
             next_card.number = Some(2);
-            assert!(!can_play_card(&prev_card, &next_card));
+            assert!(!can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -289,7 +320,7 @@ mod tests {
             prev_card.turn_effect = Some(TurnEffect::Skip);
             let mut next_card = Card::default();
             next_card.turn_effect = Some(TurnEffect::Skip);
-            assert!(can_play_card(&prev_card, &next_card));
+            assert!(can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -298,7 +329,7 @@ mod tests {
             prev_card.turn_effect = Some(TurnEffect::Skip);
             let mut next_card = Card::default();
             next_card.turn_effect = Some(TurnEffect::Reverse);
-            assert!(!can_play_card(&prev_card, &next_card));
+            assert!(!can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -307,7 +338,7 @@ mod tests {
             prev_card.draw_effect = Some(DrawEffect::Draw(2));
             let mut next_card = Card::default();
             next_card.draw_effect = Some(DrawEffect::Draw(2));
-            assert!(can_play_card(&prev_card, &next_card));
+            assert!(can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -316,7 +347,7 @@ mod tests {
             prev_card.color = Some(Color::Red);
             let mut next_card = Card::default();
             next_card.wild = true;
-            assert!(can_play_card(&prev_card, &next_card));
+            assert!(can_play_card(Some(&prev_card), &next_card));
         }
 
         #[test]
@@ -325,7 +356,7 @@ mod tests {
             prev_card.number = Some(8);
             let mut next_card = Card::default();
             next_card.wild = true;
-            assert!(can_play_card(&prev_card, &next_card));
+            assert!(can_play_card(Some(&prev_card), &next_card));
         }
     }
 
