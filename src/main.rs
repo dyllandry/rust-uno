@@ -1,9 +1,19 @@
 mod card;
 mod game;
+mod user_input;
 
-use game::Game;
+use game::Uno;
+use user_input::get_user_input;
 
 fn main() {
-    let game = Game::new(2);
-    game.render();
+    let mut uno = Uno::new(2);
+    loop {
+        uno.render();
+        if uno.game_over() {
+            break;
+        }
+        if let Some(user_input) = get_user_input() {
+            uno.input(user_input);
+        }
+    }
 }

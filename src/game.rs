@@ -1,22 +1,25 @@
 use rand::{seq::SliceRandom, thread_rng};
 
-use crate::card::{Card, Color, DrawEffect, TurnEffect};
+use crate::{
+    card::{Card, Color, DrawEffect, TurnEffect},
+    user_input::Input,
+};
 
 /**
  This mod is for game rules.
 */
 
-pub struct Game {
+pub struct Uno {
     players: Vec<Player>,
-    current_player: i32,
+    current_player_index: i32,
     deck: Vec<Card>,
     discard: Vec<Card>,
 }
 
-impl Game {
+impl Uno {
     pub fn new(player_count: i32) -> Self {
-        let mut game = Game {
-            current_player: 0,
+        let mut game = Uno {
+            current_player_index: 0,
             players: Vec::new(),
             deck: Vec::new(),
             discard: Vec::new(),
@@ -36,17 +39,59 @@ impl Game {
         game
     }
 
-    pub fn input(&self) {
-        // TODO: accept input, do something with it depending on game state
+    pub fn input(&mut self, input: Input) {
+        // TODO: handle picking wild card color
+        let current_player = &mut self.players[self.current_player_index as usize];
+        match input {
+            Input::Text(_input_text) => todo!(),
+            Input::Number(input_number) => {
+                let card_to_play = current_player.hand.get((input_number - 1) as usize);
+                if card_to_play.is_none() {
+                    println!("You do not have that card, please pick another.");
+                    return;
+                }
+                let card_to_play = card_to_play.unwrap();
+
+                let last_played_card = self.discard.last();
+                if !can_play_card(last_played_card, &card_to_play) {
+                    println!("Can't play that card :( , pick another.");
+                    return;
+                }
+
+                let card_to_play = current_player.hand.remove((input_number - 1) as usize);
+                self.discard.push(card_to_play);
+                if current_player.hand.len() == 1 {
+                    println!("Player {} has uno!", self.current_player_index);
+                } else if current_player.hand.len() == 0 {
+                    println!("Player {} won!", self.current_player_index);
+                }
+
+                if !self.game_over() {
+                    self.current_player_index += 1;
+                    if self.current_player_index == self.players.len().try_into().unwrap() {
+                        self.current_player_index = 0;
+                    }
+                }
+            }
+        }
     }
 
     pub fn render(&self) {
-        let current_player = &self.players[self.current_player as usize];
-        println!("It is player {}'s turn.", self.current_player);
+        let current_player = &self.players[self.current_player_index as usize];
+        // TODO: handle ai players
+        // "Player 3 is a computer, press Enter to watch their turn.
+        // only print: "AI Player 4 drew 3 cards and played a Red 5"
+        // or "AI Player 3 played a Red 5"
+        // self.automate_player_turn(&mut player) -> String (what happened)
+        // Maybe the above is a reason to introduce another step besides input & render
+        // Could be 1) input 2) update 3) render
+        // Where during update we play out an ai's turn
+        println!();
+        println!("It is player {}'s turn.", 1 + self.current_player_index);
 
         println!("Here are your cards:");
         for (i, card) in current_player.hand.iter().enumerate() {
-            println!("{}) {}", 1+i, card);
+            println!("{}) {}", 1 + i, card);
         }
         // TODO: add drawing a card as the last option
         println!();
@@ -61,15 +106,23 @@ impl Game {
             println!("Type a number to play a card: ")
         }
     }
-}
 
-impl Default for Game {
-    fn default() -> Self {
-        Game::new(2)
+    pub fn game_over(&self) -> bool {
+        self.players.iter().any(|player| player.hand.len() == 0)
     }
 }
 
-pub fn can_play_card(prev_card: &Card, next_card: &Card) -> bool {
+impl Default for Uno {
+    fn default() -> Self {
+        Uno::new(2)
+    }
+}
+
+pub fn can_play_card(prev_card: Option<&Card>, next_card: &Card) -> bool {
+    if prev_card.is_none() {
+        return true;
+    }
+    let prev_card = prev_card.unwrap();
     if next_card.wild {
         return true;
     }
