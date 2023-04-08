@@ -58,6 +58,10 @@ impl Uno {
                     }
                     played_card = Some(wild_card);
                     self.index_of_wild_card_being_played = None;
+                } else if input_text.to_lowercase().as_str() == "d" {
+                    // TODO: handle no cards left
+                    let drawn_card = self.deck.pop().unwrap();
+                    current_player.hand.push(drawn_card);
                 }
             }
             Input::Number(input_number) => {
@@ -124,7 +128,6 @@ impl Uno {
         for (i, card) in current_player.hand.iter().enumerate() {
             println!("{}) {}", 1 + i, card);
         }
-        // TODO: add drawing a card as the last option
         println!();
 
         if let Some(last_played_card) = &self.discard.last() {
@@ -134,7 +137,7 @@ impl Uno {
         if self.discard.len() == 0 {
             println!("Type a number to play the first card: ")
         } else {
-            println!("Type a number to play a card: ")
+            println!("Type a number to play a card, or \"d\" to draw a card: ")
         }
     }
 
