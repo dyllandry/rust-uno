@@ -1,7 +1,6 @@
 # Todo
 
 - support turn effects
-- support draw effects
 - handle no cards being left when a card is drawn
 
 # Designing turn logic

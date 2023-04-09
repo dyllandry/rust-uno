@@ -42,11 +42,11 @@ impl Uno {
     }
 
     pub fn input(&mut self, input: Input) {
-        let current_player = &mut self.players[self.current_player_index as usize];
         let mut played_card: Option<Card> = None;
 
         match input {
             Input::Text(input_text) => {
+                let current_player = &mut self.players[self.current_player_index as usize];
                 if let Some(wild_index) = self.index_of_wild_card_being_played {
                     let mut wild_card = current_player.hand.remove(wild_index as usize);
                     match input_text.to_lowercase().as_str() {
@@ -65,6 +65,7 @@ impl Uno {
                 }
             }
             Input::Number(input_number) => {
+                let current_player = &mut self.players[self.current_player_index as usize];
                 let card_to_play = current_player.hand.get((input_number - 1) as usize);
                 if card_to_play.is_none() {
                     println!("You do not have that card, please pick another.");
@@ -88,7 +89,24 @@ impl Uno {
         }
 
         if let Some(played_card) = played_card {
+            if let Some(draw_effect) = played_card.draw_effect {
+                match draw_effect {
+                    DrawEffect::Draw(num_cards_to_draw) => {
+                        // TODO: change how next player is retreived for when turn effects are
+                        // implemented
+                        let next_player_index = (self.current_player_index + 1) as usize % self.players.len();
+                        let next_player = &mut self.players[next_player_index];
+                        for _ in 0..num_cards_to_draw {
+                            // TODO: handle no more cards
+                            next_player.hand.push(self.deck.pop().unwrap());
+                        }
+                        println!("Player {} drew {} cards!", next_player_index+1, num_cards_to_draw);
+                    }
+                }
+            }
+
             self.discard.push(played_card);
+            let current_player = &mut self.players[self.current_player_index as usize];
             if current_player.hand.len() == 1 {
                 println!("Player {} has uno!", self.current_player_index);
             } else if current_player.hand.len() == 0 {
