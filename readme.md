@@ -1,7 +1,10 @@
 # Todo
 
-- support turn effects
+- try out making turn effect its own function outside of the game struct with dependency injection
+	- dont have to setup uno struct to test the function
+	- worried it makes the code harder to write or read
 - handle no cards being left when a card is drawn
+- AI
 
 # Designing turn logic
 
