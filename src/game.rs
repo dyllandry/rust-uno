@@ -94,26 +94,12 @@ impl Uno {
         }
 
         if let Some(played_card) = played_card {
-            let next_player_index = {
-                let change_magnitude = match played_card.turn_effect {
-                    Some(turn_effect) => match turn_effect {
-                        TurnEffect::Skip => 2,
-                        _ => 1
-                    },
-                    _ => 1
-                };
-                let change_direction = match self.turn_order {
-                    TurnOrder::Forward => 1,
-                    TurnOrder::Backward => -1,
-                };
-                let change = change_magnitude * change_direction;
-                let next_index_bounded = (self.current_player_index + change) % self.players.len() as i32;
-                if next_index_bounded < 0 {
-                    self.players.len() as i32 + next_index_bounded
-                } else {
-                    next_index_bounded
-                }
-            };
+            let next_player_index = get_next_player_index(
+                self.current_player_index,
+                self.players.len() as i32,
+                self.turn_order,
+                played_card.turn_effect
+            );
 
             if let Some(draw_effect) = played_card.draw_effect {
                 match draw_effect {
@@ -194,6 +180,33 @@ impl Uno {
     }
 }
 
+fn get_next_player_index(
+    current_player_index: i32,
+    num_players: i32,
+    turn_order: TurnOrder,
+    turn_effect: Option<TurnEffect>
+) -> i32 {
+    let mut change_magnitude = 1;
+    let mut change_direction = match turn_order {
+        TurnOrder::Forward => 1,
+        TurnOrder::Backward => -1,
+    };
+    if let Some(turn_effect) = turn_effect {
+        match turn_effect {
+            TurnEffect::Skip => change_magnitude += 1,
+            TurnEffect::Reverse => change_direction *= -1,
+        };
+    };
+    let total_change = change_magnitude * change_direction;
+    let next_index = (current_player_index + total_change) % num_players;
+    if next_index < 0 {
+        num_players + next_index
+    } else {
+        next_index
+    }
+}
+
+#[derive(Copy, Clone)]
 enum TurnOrder {
     Forward,
     Backward,
@@ -548,6 +561,34 @@ mod tests {
             for card in standard_cards {
                 remove_card_or_panic(&card, &mut received_cards);
             }
+        }
+    }
+
+    mod get_next_player_index {
+        use super::super::*;
+
+        #[test]
+        fn after_normal_turn() {
+            let result = get_next_player_index(0, 2, TurnOrder::Forward, None);
+            assert_eq!(result, 1);
+        }
+
+        #[test]
+        fn after_reverse() {
+            let result = get_next_player_index(0, 3, TurnOrder::Forward, Some(TurnEffect::Reverse));
+            assert_eq!(result, 2)
+        }
+
+        #[test]
+        fn after_skip() {
+            let result = get_next_player_index(0,3, TurnOrder::Forward, Some(TurnEffect::Skip));
+            assert_eq!(result, 2);
+        }
+
+        #[test]
+        fn after_skip_last_player() {
+            let result = get_next_player_index(2,3, TurnOrder::Forward, Some(TurnEffect::Skip));
+            assert_eq!(result, 1);
         }
     }
 }
