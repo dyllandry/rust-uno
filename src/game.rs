@@ -187,24 +187,32 @@ fn get_next_player_index(
     turn_order: TurnOrder,
     turn_effect: Option<TurnEffect>
 ) -> i32 {
-    let mut change_magnitude = 1;
-    let mut change_direction = match turn_order {
-        TurnOrder::Forward => 1,
-        TurnOrder::Backward => -1,
-    };
-    if let Some(turn_effect) = turn_effect {
-        match turn_effect {
-            TurnEffect::Skip => change_magnitude += 1,
-            TurnEffect::Reverse => change_direction *= -1,
-        };
-    };
-    let total_change = change_magnitude * change_direction;
-    let next_index = (current_player_index + total_change) % num_players;
-    if next_index < 0 {
-        num_players + next_index
+    let change_magnitude = if Some(TurnEffect::Skip) == turn_effect {
+        2
     } else {
-        next_index
+        1
+    };
+    let change_direction = {
+        let initial_direction = match turn_order {
+            TurnOrder::Forward => 1,
+            TurnOrder::Backward => -1,
+        };
+        if let Some(TurnEffect::Reverse) = turn_effect {
+            initial_direction * -1
+        } else {
+            initial_direction
+        }
+    };
+    let mut next_player_index = current_player_index;
+    for _ in 0..change_magnitude {
+        next_player_index += change_direction;
+        if next_player_index == num_players {
+            next_player_index = 0;
+        } else if next_player_index < 0 {
+            next_player_index = num_players - 1;
+        }
     }
+    next_player_index
 }
 
 #[derive(Copy, Clone)]
