@@ -46,6 +46,7 @@ impl Uno {
     pub fn input(&mut self, input: Input) {
         let mut played_card: Option<Card> = None;
 
+        // We tell what the player is doing based on if they input text or a number.
         match input {
             Input::Text(input_text) => {
                 let current_player = &mut self.players[self.current_player_index as usize];
