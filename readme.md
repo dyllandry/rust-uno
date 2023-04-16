@@ -1,6 +1,19 @@
 # Todo
 
 - handle no cards being left when a card is drawn
+```rust
+/// Panics if the number of cards to draw is less than the amount of cards in
+/// the deck and discard pile.
+fn draw_cards(&mut player_hand, num_to_draw, &mut deck, &mut discard) {
+	for _ in 0..num_to_draw {
+		if deck.len() == 0 {
+			// add discard to deck then shuffle
+		}
+		player_hand.push(deck.pop());
+	}
+}
+```
+
 - AI
 
 # Designing turn logic
