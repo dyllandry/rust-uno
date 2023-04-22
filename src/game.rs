@@ -64,9 +64,12 @@ impl Uno {
                     self.index_of_wild_card_being_played = None;
                 } else if input_text.to_lowercase().as_str() == "d" {
                     // Draw a card
-                    // TODO: handle no cards left
-                    let drawn_card = self.deck.pop().unwrap();
-                    current_player.hand.push(drawn_card);
+                    draw_cards(
+                        &mut current_player.hand,
+                        1,
+                        &mut self.deck,
+                        &mut self.discard,
+                    );
                 }
             }
             Input::Number(card_index) => {
@@ -99,18 +102,24 @@ impl Uno {
                 self.current_player_index,
                 self.players.len() as i32,
                 self.turn_order,
-                played_card.turn_effect
+                played_card.turn_effect,
             );
 
             if let Some(draw_effect) = played_card.draw_effect {
                 match draw_effect {
                     DrawEffect::Draw(num_cards_to_draw) => {
                         let next_player = &mut self.players[next_player_index as usize];
-                        for _ in 0..num_cards_to_draw {
-                            // TODO: handle no more cards
-                            next_player.hand.push(self.deck.pop().unwrap());
-                        }
-                        println!("Player {} drew {} cards!", next_player_index+1, num_cards_to_draw);
+                        draw_cards(
+                            &mut next_player.hand,
+                            num_cards_to_draw,
+                            &mut self.deck,
+                            &mut self.discard,
+                        );
+                        println!(
+                            "Player {} drew {} cards!",
+                            next_player_index + 1,
+                            num_cards_to_draw
+                        );
                     }
                 }
             }
@@ -185,7 +194,7 @@ fn get_next_player_index(
     current_player_index: i32,
     num_players: i32,
     turn_order: TurnOrder,
-    turn_effect: Option<TurnEffect>
+    turn_effect: Option<TurnEffect>,
 ) -> i32 {
     let change_magnitude = if Some(TurnEffect::Skip) == turn_effect {
         2
@@ -341,6 +350,38 @@ pub fn create_deck() -> Vec<Card> {
         });
     }
     return deck;
+}
+
+fn draw_cards(
+    player_hand: &mut Vec<Card>,
+    num_to_draw: i32,
+    deck: &mut Vec<Card>,
+    discard: &mut Vec<Card>,
+) {
+    if num_to_draw <= 0 {
+        return;
+    }
+
+    // -1 because you have to leave the top card in the discard pile and cant put it in the deck
+    if deck.len() + discard.len() - 1 < num_to_draw as usize {
+        panic!(
+            "There are not enough cards left for the player to draw. {} cards in deck + discard but player wants to draw {}.",
+            deck.len() + discard.len(),
+            num_to_draw
+        );
+    }
+
+    if deck.len() < num_to_draw as usize {
+        for _ in 0..discard.len() {
+            deck.push(discard.pop().unwrap())
+        }
+        let mut rng = thread_rng();
+        deck.shuffle(&mut rng);
+    }
+
+    for _ in 0..num_to_draw {
+        player_hand.push(deck.pop().unwrap());
+    }
 }
 
 #[derive(Default)]
@@ -590,14 +631,48 @@ mod tests {
 
         #[test]
         fn after_skip() {
-            let result = get_next_player_index(0,3, TurnOrder::Forward, Some(TurnEffect::Skip));
+            let result = get_next_player_index(0, 3, TurnOrder::Forward, Some(TurnEffect::Skip));
             assert_eq!(result, 2);
         }
 
         #[test]
         fn after_skip_last_player() {
-            let result = get_next_player_index(2,3, TurnOrder::Forward, Some(TurnEffect::Skip));
+            let result = get_next_player_index(2, 3, TurnOrder::Forward, Some(TurnEffect::Skip));
             assert_eq!(result, 1);
+        }
+    }
+
+    mod draw_cards {
+        use super::super::*;
+
+        #[test]
+        fn deals_cards_into_players_hand() {
+            let mut hand: Vec<Card> = Vec::new();
+            let mut deck = vec![Card::default(), Card::default(), Card::default()];
+            let mut discard: Vec<Card> = Vec::new();
+            draw_cards(&mut hand, 2, &mut deck, &mut discard);
+            assert!(hand.len() == 2);
+            assert!(deck.len() == 1);
+        }
+
+        #[test]
+        fn moves_cards_from_discard_into_deck_if_deck_doesnt_have_enough() {
+            let mut hand: Vec<Card> = Vec::new();
+            let mut deck: Vec<Card> = Vec::new();
+            let mut discard = vec![Card::default(), Card::default(), Card::default()];
+            draw_cards(&mut hand, 2, &mut deck, &mut discard);
+            assert!(hand.len() == 2);
+            assert!(deck.len() == 1);
+            assert!(discard.len() == 0);
+        }
+
+        #[test]
+        #[should_panic]
+        fn panics_if_there_arent_enough_cards_in_deck_and_discard_for_player_to_draw() {
+            let mut hand: Vec<Card> = Vec::new();
+            let mut deck = vec![Card::default()];
+            let mut discard = vec![Card::default()];
+            draw_cards(&mut hand, 3, &mut deck, &mut discard);
         }
     }
 }
