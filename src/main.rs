@@ -6,7 +6,7 @@ use game::Uno;
 use user_input::get_user_input;
 
 fn main() {
-    let mut uno = Uno::new(2);
+    let mut uno = Uno::new(1,1);
     loop {
         uno.render();
         if uno.game_over() {

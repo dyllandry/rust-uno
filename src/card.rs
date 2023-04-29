@@ -47,7 +47,7 @@ impl ToString for DrawEffect {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct Card {
     pub number: Option<i32>,
     pub color: Option<Color>,

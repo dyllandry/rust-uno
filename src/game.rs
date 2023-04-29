@@ -19,7 +19,7 @@ pub struct Uno {
 }
 
 impl Uno {
-    pub fn new(player_count: i32) -> Self {
+    pub fn new(player_count: i32, ai_count: i32) -> Self {
         let mut game = Uno {
             current_player_index: 0,
             players: Vec::new(),
@@ -32,14 +32,35 @@ impl Uno {
         game.deck = create_deck();
         game.deck.shuffle(&mut thread_rng());
 
+        let mut human_players: Vec<Player> = Vec::new();
         for _ in 0..player_count {
             let mut player = Player::default();
-            for _ in 0..7 {
-                let card = game.deck.pop().unwrap();
-                player.hand.push(card);
-            }
-            game.players.push(player);
+            draw_cards(&mut player.hand, 7, &mut game.deck, &mut game.discard);
+            human_players.push(player);
         }
+
+        let mut ai_players: Vec<Player> = Vec::new();
+        for _ in 0..ai_count {
+            let mut player = Player::default();
+            player.ai = true;
+            draw_cards(&mut player.hand, 7, &mut game.deck, &mut game.discard);
+            ai_players.push(player);
+        }
+
+        // Alternate order of players and ai so players play against ai.
+        if player_count > 0 && ai_count > 0 {
+            for _ in 0..(player_count + ai_count) {
+                let human: Option<Player> = human_players.pop();
+                let ai: Option<Player> = ai_players.pop();
+                if let Some(human) = human {
+                    game.players.push(human);
+                }
+                if let Some(ai) = ai {
+                    game.players.push(ai);
+                }
+            }
+        }
+
         game
     }
 
@@ -145,6 +166,11 @@ impl Uno {
             if !self.game_over() {
                 self.current_player_index = next_player_index;
             }
+
+            if self.players[next_player_index as usize].ai == true {
+                // TODO: if the next player (new current player) is an ai, we need to play out their
+                // turn and any next ais until we reach the next human player
+            }
         }
     }
 
@@ -157,14 +183,6 @@ impl Uno {
             return;
         }
 
-        // TODO: handle ai players
-        // "Player 3 is a computer, press Enter to watch their turn.
-        // only print: "AI Player 4 drew 3 cards and played a Red 5"
-        // or "AI Player 3 played a Red 5"
-        // self.automate_player_turn(&mut player) -> String (what happened)
-        // Maybe the above is a reason to introduce another step besides input & render
-        // Could be 1) input 2) update 3) render
-        // Where during update we play out an ai's turn
         println!();
         println!("It is player {}'s turn.", 1 + self.current_player_index);
 
@@ -232,7 +250,7 @@ enum TurnOrder {
 
 impl Default for Uno {
     fn default() -> Self {
-        Uno::new(2)
+        Uno::new(1, 1)
     }
 }
 
@@ -387,10 +405,33 @@ fn draw_cards(
 #[derive(Default)]
 pub struct Player {
     hand: Vec<Card>,
+    ai: bool
 }
 
 #[cfg(test)]
 mod tests {
+    mod uno_new {
+        use super::super::*;
+
+        #[test]
+        fn players_have_7_cards_each() {
+            let uno = Uno::new(2,2);
+            assert_eq!(uno.players[0].hand.len(), 7);
+            assert_eq!(uno.players[1].hand.len(), 7);
+            assert_eq!(uno.players[2].hand.len(), 7);
+            assert_eq!(uno.players[3].hand.len(), 7);
+        }
+
+        #[test]
+        fn players_alternate_between_human_and_ai() {
+            let uno = Uno::new(2,2);
+            assert_eq!(uno.players[0].ai, false);
+            assert_eq!(uno.players[1].ai, true);
+            assert_eq!(uno.players[2].ai, false);
+            assert_eq!(uno.players[3].ai, true);
+        }
+    }
+
     mod can_play_card {
         use crate::{
             card::{Card, Color, DrawEffect, TurnEffect},
