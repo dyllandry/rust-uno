@@ -14,7 +14,7 @@ pub struct Uno {
     current_player_index: i32,
     deck: Vec<Card>,
     discard: Vec<Card>,
-    index_of_wild_card_being_played: Option<i32>,
+    wild_card_index_to_pick_color_for: Option<i32>,
     turn_order: TurnOrder,
 }
 
@@ -25,7 +25,7 @@ impl Uno {
             players: Vec::new(),
             deck: Vec::new(),
             discard: Vec::new(),
-            index_of_wild_card_being_played: None,
+            wild_card_index_to_pick_color_for: None,
             turn_order: TurnOrder::Forward,
         };
 
@@ -48,16 +48,14 @@ impl Uno {
         }
 
         // Alternate order of players and ai so players play against ai.
-        if player_count > 0 && ai_count > 0 {
-            for _ in 0..(player_count + ai_count) {
-                let human: Option<Player> = human_players.pop();
-                let ai: Option<Player> = ai_players.pop();
-                if let Some(human) = human {
-                    game.players.push(human);
-                }
-                if let Some(ai) = ai {
-                    game.players.push(ai);
-                }
+        for _ in 0..(player_count + ai_count) {
+            let human: Option<Player> = human_players.pop();
+            let ai: Option<Player> = ai_players.pop();
+            if let Some(human) = human {
+                game.players.push(human);
+            }
+            if let Some(ai) = ai {
+                game.players.push(ai);
             }
         }
 
@@ -65,119 +63,129 @@ impl Uno {
     }
 
     pub fn input(&mut self, input: Input) {
-        let mut played_card: Option<Card> = None;
-
-        // We tell what the player is doing based on if they input text or a number.
-        match input {
+        // Create a valid game command from raw user input.
+        let command: Option<Command> = match input {
+            Input::Number(card_index) => {
+                Some(Command::PickCardToPlay(card_index))
+            }
             Input::Text(input_text) => {
-                let current_player = &mut self.players[self.current_player_index as usize];
-                // Pick color of wild card
-                if let Some(wild_index) = self.index_of_wild_card_being_played {
-                    let mut wild_card = current_player.hand.remove(wild_index as usize);
-                    match input_text.to_lowercase().as_str() {
-                        "r" => wild_card.color = Some(Color::Red),
-                        "b" => wild_card.color = Some(Color::Blue),
-                        "g" => wild_card.color = Some(Color::Green),
-                        "y" => wild_card.color = Some(Color::Yellow),
-                        _ => return,
-                    }
-                    played_card = Some(wild_card);
-                    self.index_of_wild_card_being_played = None;
-                } else if input_text.to_lowercase().as_str() == "d" {
-                    // Draw a card
+                if input_text.to_lowercase().as_str() == "d" {
+                    Some(Command::DrawCard)
+                } else if self.wild_card_index_to_pick_color_for.is_some() {
+                    let picked_wild_color: Option<Color> = match input_text.to_lowercase().as_str() {
+                        "r" => Some(Color::Red),
+                        "b" => Some(Color::Blue),
+                        "g" => Some(Color::Green),
+                        "y" => Some(Color::Yellow),
+                        _ => None,
+                    };
+                    picked_wild_color.and_then(|color| Some(Command::PickWildCardColor(color)))
+                } else {
+                    None
+                }
+            }
+        };
+
+        // Process command
+        if let Some(command) = command {
+            match command {
+                Command::DrawCard => {
+                    let current_player = &mut self.players[self.current_player_index as usize];
                     draw_cards(
                         &mut current_player.hand,
                         1,
                         &mut self.deck,
                         &mut self.discard,
                     );
-                }
+                },
+                Command::PickWildCardColor(wild_color) => {
+                    let current_player = &mut self.players[self.current_player_index as usize];
+                    if let Some(wild_index) = self.wild_card_index_to_pick_color_for {
+                        let mut wild_card = current_player.hand.remove((wild_index - 1) as usize);
+                        wild_card.color = Some(wild_color);
+                        self.wild_card_index_to_pick_color_for = None;
+                        self.play_card(wild_card);
+                    };
+                },
+                Command::PickCardToPlay(card_index) => {
+                    let current_player = &mut self.players[self.current_player_index as usize];
+                    match validate_card_from_index(card_index, &current_player.hand, self.discard.last()) {
+                        CardFromIndexValidationResult::Invalid(reason) => {
+                            println!("{}", reason);
+                        },
+                        CardFromIndexValidationResult::Valid => {
+                            let card_to_play = current_player.hand.get((card_index - 1) as usize).unwrap();
+                            // If the picked a wild card to play, then they next need to pick a color. We
+                            // wait for an upcoming Command::PickWildColor(color)
+                            if card_to_play.wild {
+                                self.wild_card_index_to_pick_color_for = Some(card_index);
+                            } else {
+                                let card_to_play = current_player.hand.remove((card_index - 1) as usize);
+                                self.play_card(card_to_play);
+                            }
+                        }
+                    }
+                },
             }
-            Input::Number(card_index) => {
-                // Player is trying to play a card, we validate it.
-                let current_player = &mut self.players[self.current_player_index as usize];
-                let card_to_play = current_player.hand.get((card_index - 1) as usize);
-                if card_to_play.is_none() {
-                    println!("You do not have that card, please pick another.");
-                    return;
-                }
-                let card_to_play = card_to_play.unwrap();
+            // TODO: if after the last command it is now an ai's turn, carry out the turn of any
+            // ais.
+            // while (current_player_is_ai) {
+            //     // decide action to take (play card or draw card)
+            //     // self.play_card(card) or draw_cards()
+            // }
+        }
+    }
 
-                let last_played_card = self.discard.last();
-                if !can_play_card(last_played_card, &card_to_play) {
-                    println!("Can't play that card :( , pick another.");
-                    return;
-                }
-
-                if card_to_play.wild {
-                    self.index_of_wild_card_being_played = Some(card_index - 1);
-                    return;
-                }
-
-                played_card = Some(current_player.hand.remove((card_index - 1) as usize));
+    /// Card validation should be done prior to calling this function.
+    fn play_card(&mut self, card: Card) {
+        if card.turn_effect == Some(TurnEffect::Reverse) {
+            match self.turn_order {
+                TurnOrder::Forward => self.turn_order = TurnOrder::Backward,
+                TurnOrder::Backward => self.turn_order = TurnOrder::Forward,
             }
         }
 
-        if let Some(played_card) = played_card {
-            let next_player_index = get_next_player_index(
-                self.current_player_index,
-                self.players.len() as i32,
-                self.turn_order,
-                played_card.turn_effect,
+        println!("turn order after doing reverse: {:?}", self.turn_order);
+
+        let next_player_index = get_next_player_index(
+            self.current_player_index,
+            self.players.len() as i32,
+            self.turn_order,
+            card.turn_effect,
+        );
+
+        println!("next player index: {:?}", next_player_index);
+
+        if let Some(draw_effect) = card.draw_effect {
+            play_card_draw_effect(
+                &draw_effect,
+                &mut self.players[next_player_index as usize],
+                next_player_index,
+                &mut self.deck,
+                &mut self.discard
             );
+        }
 
-            if let Some(draw_effect) = played_card.draw_effect {
-                match draw_effect {
-                    DrawEffect::Draw(num_cards_to_draw) => {
-                        let next_player = &mut self.players[next_player_index as usize];
-                        draw_cards(
-                            &mut next_player.hand,
-                            num_cards_to_draw,
-                            &mut self.deck,
-                            &mut self.discard,
-                        );
-                        println!(
-                            "Player {} drew {} cards!",
-                            next_player_index + 1,
-                            num_cards_to_draw
-                        );
-                    }
-                }
-            }
+        self.discard.push(card);
 
-            if let Some(turn_effect) = played_card.turn_effect {
-                if turn_effect == TurnEffect::Reverse {
-                    match self.turn_order {
-                        TurnOrder::Forward => self.turn_order = TurnOrder::Backward,
-                        TurnOrder::Backward => self.turn_order = TurnOrder::Forward,
-                    }
-                }
-            }
+        // Print if someone has uno or won
+        let current_player = &mut self.players[self.current_player_index as usize];
+        if current_player.hand.len() == 1 {
+            println!("Player {} has uno!", self.current_player_index);
+        } else if current_player.hand.len() == 0 {
+            println!("Player {} won!", self.current_player_index);
+        }
 
-            self.discard.push(played_card);
-
-            let current_player = &mut self.players[self.current_player_index as usize];
-            if current_player.hand.len() == 1 {
-                println!("Player {} has uno!", self.current_player_index);
-            } else if current_player.hand.len() == 0 {
-                println!("Player {} won!", self.current_player_index);
-            }
-
-            if !self.game_over() {
-                self.current_player_index = next_player_index;
-            }
-
-            if self.players[next_player_index as usize].ai == true {
-                // TODO: if the next player (new current player) is an ai, we need to play out their
-                // turn and any next ais until we reach the next human player
-            }
+        // Set next player for next turn
+        if !self.game_over() {
+            self.current_player_index = next_player_index;
         }
     }
 
     pub fn render(&self) {
         let current_player = &self.players[self.current_player_index as usize];
 
-        if self.index_of_wild_card_being_played.is_some() {
+        if self.wild_card_index_to_pick_color_for.is_some() {
             println!("What color do you want your wild card to be?");
             println!("Enter one of \"R\", \"B\", \"G\", or \"Y\" to pick a color: ");
             return;
@@ -208,6 +216,46 @@ impl Uno {
     }
 }
 
+fn play_card_draw_effect(
+    draw_effect: &DrawEffect,
+    next_player: &mut Player,
+    next_player_index: i32,
+    deck: &mut Vec<Card>,
+    discard: &mut Vec<Card>
+) {
+    let DrawEffect::Draw(num_cards_to_draw) = draw_effect;
+    draw_cards(
+        &mut next_player.hand,
+        *num_cards_to_draw,
+        deck,
+        discard,
+    );
+    println!(
+        "Player {} drew {} cards!",
+        next_player_index + 1,
+        num_cards_to_draw
+    );
+}
+
+enum CardFromIndexValidationResult {
+    Valid,
+    Invalid(String),
+}
+
+fn validate_card_from_index(card_index: i32, player_hand: &Vec<Card>, last_played_card: Option<&Card>) -> CardFromIndexValidationResult {
+    let card_to_play = player_hand.get((card_index - 1) as usize);
+    if card_to_play.is_none() {
+        return CardFromIndexValidationResult::Invalid("You do not have that card, please pick another.".to_string());
+    }
+
+    let card_to_play = card_to_play.unwrap();
+
+    if !can_play_card(last_played_card, &card_to_play) {
+        return CardFromIndexValidationResult::Invalid("Can't play that card :( , pick another.".to_string());
+    }
+    return CardFromIndexValidationResult::Valid
+}
+
 fn get_next_player_index(
     current_player_index: i32,
     num_players: i32,
@@ -219,16 +267,9 @@ fn get_next_player_index(
     } else {
         1
     };
-    let change_direction = {
-        let initial_direction = match turn_order {
-            TurnOrder::Forward => 1,
-            TurnOrder::Backward => -1,
-        };
-        if let Some(TurnEffect::Reverse) = turn_effect {
-            initial_direction * -1
-        } else {
-            initial_direction
-        }
+    let change_direction = match turn_order {
+        TurnOrder::Forward => 1,
+        TurnOrder::Backward => -1,
     };
     let mut next_player_index = current_player_index;
     for _ in 0..change_magnitude {
@@ -242,7 +283,7 @@ fn get_next_player_index(
     next_player_index
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum TurnOrder {
     Forward,
     Backward,
@@ -406,6 +447,12 @@ fn draw_cards(
 pub struct Player {
     hand: Vec<Card>,
     ai: bool
+}
+
+enum Command {
+    PickCardToPlay(i32),
+    DrawCard,
+    PickWildCardColor(Color),
 }
 
 #[cfg(test)]
@@ -714,6 +761,51 @@ mod tests {
             let mut deck = vec![Card::default()];
             let mut discard = vec![Card::default()];
             draw_cards(&mut hand, 3, &mut deck, &mut discard);
+        }
+    }
+
+    mod play_card_draw_effect {
+        use super::super::*;
+
+        #[test]
+        fn two_cards_move_from_the_deck_to_the_next_player_after_a_draw_2_card_is_played() {
+            let mut deck: Vec<Card> = vec![
+                Card::from("red 1"),
+                Card::from("blue 2"),
+                Card::from("green 3"),
+            ];
+            let mut discard: Vec<Card> = vec![];
+            let mut next_player = Player::default();
+            let draw_effect = DrawEffect::Draw(2);
+
+            play_card_draw_effect(&draw_effect, &mut next_player, 1, &mut deck, &mut discard);
+
+            assert_eq!(deck.len(), 1);
+            assert_eq!(next_player.hand.len(), 2);
+        }
+    }
+
+    mod play_card {
+        use super::super::*;
+
+        #[test]
+        fn after_player_1_plays_a_skip_player_3_is_next() {
+            let mut uno = Uno::new(4, 0);
+            let card = Card::from("skip");
+
+            uno.play_card(card);
+
+            assert_eq!(uno.current_player_index, 2);
+        }
+
+        #[test]
+        fn after_player_1_plays_a_reverse_player_4_is_next() {
+            let mut uno = Uno::new(4, 0);
+            let card = Card::from("reverse");
+
+            uno.play_card(card);
+
+            assert_eq!(uno.current_player_index, 3);
         }
     }
 }
