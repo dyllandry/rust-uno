@@ -20,6 +20,10 @@ pub struct Uno {
 
 impl Uno {
     pub fn new(player_count: i32, ai_count: i32) -> Self {
+        if player_count == 0 {
+            panic!("Only Uno games with at least 1 human player are supported.");
+        }
+
         let mut game = Uno {
             current_player_index: 0,
             players: Vec::new(),
@@ -127,12 +131,15 @@ impl Uno {
                     }
                 },
             }
-            // TODO: if after the last command it is now an ai's turn, carry out the turn of any
-            // ais.
-            // while (current_player_is_ai) {
-            //     // decide action to take (play card or draw card)
-            //     // self.play_card(card) or draw_cards()
-            // }
+
+            // Let AI players go
+            if !self.game_over() {
+                let mut current_player = self.players.get(self.current_player_index as usize).unwrap();
+                while !self.game_over() && current_player.ai {
+                    self.automate_current_player_turn();
+                    current_player = self.players.get(self.current_player_index as usize).unwrap();
+                }
+            }
         }
     }
 
@@ -145,16 +152,22 @@ impl Uno {
             }
         }
 
-        println!("turn order after doing reverse: {:?}", self.turn_order);
+        let next_player_index = {
+            let mut next_player_index = get_next_player_index(
+                self.current_player_index,
+                self.players.len() as i32,
+                self.turn_order,
+            );
 
-        let next_player_index = get_next_player_index(
-            self.current_player_index,
-            self.players.len() as i32,
-            self.turn_order,
-            card.turn_effect,
-        );
-
-        println!("next player index: {:?}", next_player_index);
+            if card.turn_effect == Some(TurnEffect::Skip) {
+                next_player_index = get_next_player_index(
+                    next_player_index,
+                    self.players.len() as i32,
+                    self.turn_order,
+                );
+            }
+            next_player_index
+        };
 
         if let Some(draw_effect) = card.draw_effect {
             play_card_draw_effect(
@@ -171,15 +184,49 @@ impl Uno {
         // Print if someone has uno or won
         let current_player = &mut self.players[self.current_player_index as usize];
         if current_player.hand.len() == 1 {
-            println!("Player {} has uno!", self.current_player_index);
+            println!("Player {} has uno!", self.current_player_index + 1);
         } else if current_player.hand.len() == 0 {
-            println!("Player {} won!", self.current_player_index);
+            println!("Player {} won!", self.current_player_index + 1);
         }
 
         // Set next player for next turn
         if !self.game_over() {
             self.current_player_index = next_player_index;
         }
+    }
+
+    fn automate_current_player_turn(&mut self) {
+        let player = &mut self.players[self.current_player_index as usize];
+        let mut card_index_to_play: Option<usize> = None;
+        while card_index_to_play.is_none() {
+            let last_played_card: Option<&Card> = self.discard.last();
+            if let Some((card_index, _)) = player.hand.iter().enumerate().find(|(_, card)| can_play_card(last_played_card, card)) {
+                card_index_to_play = Some(card_index);
+            } else {
+               draw_cards(
+                   &mut player.hand,
+                   1,
+                   &mut self.deck,
+                   &mut self.discard,
+               );
+            }
+        }
+        let mut card_to_play = player.hand.remove(card_index_to_play.unwrap());
+        if card_to_play.wild {
+            let mut color_counters: Vec<(Color, i32)> = vec![
+                {(Color::Red, 0)},
+                {(Color::Blue, 0)},
+                {(Color::Yellow, 0)},
+                {(Color::Green, 0)},
+            ];
+            for counter in &mut color_counters {
+                counter.1 = player.hand.iter().filter(|card| card.color == Some(counter.0)).count() as i32;
+            }
+            color_counters.sort_by_key(|(_, count)| *count);
+            let color_with_most_cards = color_counters.first().unwrap().0;
+            card_to_play.color = Some(color_with_most_cards);
+        }
+        self.play_card(card_to_play);
     }
 
     pub fn render(&self) {
@@ -260,25 +307,16 @@ fn get_next_player_index(
     current_player_index: i32,
     num_players: i32,
     turn_order: TurnOrder,
-    turn_effect: Option<TurnEffect>,
 ) -> i32 {
-    let change_magnitude = if Some(TurnEffect::Skip) == turn_effect {
-        2
-    } else {
-        1
-    };
     let change_direction = match turn_order {
         TurnOrder::Forward => 1,
         TurnOrder::Backward => -1,
     };
-    let mut next_player_index = current_player_index;
-    for _ in 0..change_magnitude {
-        next_player_index += change_direction;
-        if next_player_index == num_players {
-            next_player_index = 0;
-        } else if next_player_index < 0 {
-            next_player_index = num_players - 1;
-        }
+    let mut next_player_index = current_player_index + change_direction;
+    if next_player_index == num_players {
+        next_player_index = 0;
+    } else if next_player_index < 0 {
+        next_player_index = num_players - 1;
     }
     next_player_index
 }
@@ -706,27 +744,15 @@ mod tests {
         use super::super::*;
 
         #[test]
-        fn after_normal_turn() {
-            let result = get_next_player_index(0, 2, TurnOrder::Forward, None);
+        fn going_forwards() {
+            let result = get_next_player_index(0, 2, TurnOrder::Forward);
             assert_eq!(result, 1);
         }
 
         #[test]
-        fn after_reverse() {
-            let result = get_next_player_index(0, 3, TurnOrder::Forward, Some(TurnEffect::Reverse));
+        fn going_backwards() {
+            let result = get_next_player_index(0, 3, TurnOrder::Backward);
             assert_eq!(result, 2)
-        }
-
-        #[test]
-        fn after_skip() {
-            let result = get_next_player_index(0, 3, TurnOrder::Forward, Some(TurnEffect::Skip));
-            assert_eq!(result, 2);
-        }
-
-        #[test]
-        fn after_skip_last_player() {
-            let result = get_next_player_index(2, 3, TurnOrder::Forward, Some(TurnEffect::Skip));
-            assert_eq!(result, 1);
         }
     }
 
@@ -806,6 +832,139 @@ mod tests {
             uno.play_card(card);
 
             assert_eq!(uno.current_player_index, 3);
+        }
+    }
+
+    mod automate_current_player_turn {
+        use super::super::*;
+
+        #[test]
+        fn player_plays_valid_card_in_hand() {
+            let mut uno = Uno::new(2,0);
+            let last_played_card = Card::from("green 5");
+            uno.discard.push(last_played_card);
+            let bad_card_1 = Card::from("red 1");
+            let bad_card_2 = Card::from("yellow 2");
+            let valid_card = Card::from("green 3");
+            uno.players[0].hand = vec![bad_card_1, valid_card, bad_card_2];
+
+            uno.automate_current_player_turn();
+            
+            assert_eq!(uno.players[0].hand.len(), 2);
+            let played_card = uno.discard.last().unwrap();
+            assert_eq!(played_card.color, Some(Color::Green));
+            assert_eq!(played_card.number, Some(3));
+        }
+
+        #[test]
+        fn player_plays_wild_card_in_hand() {
+            let mut uno = Uno::new(2,0);
+            let wild_card = Card::from("wild");
+            uno.players[0].hand = vec![wild_card];
+
+            uno.automate_current_player_turn();
+            
+            let played_card = uno.discard.last().unwrap();
+            assert!(played_card.wild);
+            assert!(played_card.color.is_some());
+        }
+
+        #[test]
+        fn player_draws_when_no_valid_cards_in_hand_and_plays_next_valid_card() {
+            let mut uno = Uno::new(2,0);
+            let last_played_card = Card::from("green 5");
+            uno.discard.push(last_played_card);
+            let bad_hand_card_1 = Card::from("red 1");
+            let bad_hand_card_2 = Card::from("yellow 2");
+            uno.players[0].hand = vec![bad_hand_card_1, bad_hand_card_2];
+            let bad_deck_card = Card::from("red 3");
+            let valid_deck_card = Card::from("green 4");
+            uno.deck = vec![valid_deck_card, bad_deck_card];
+
+            uno.automate_current_player_turn();
+            
+            assert_eq!(uno.players[0].hand.len(), 3);
+            assert_eq!(uno.deck.len(), 0);
+            let played_card = uno.discard.last().unwrap();
+            assert_eq!(played_card.color, Some(Color::Green));
+            assert_eq!(played_card.number, Some(4));
+        }
+    }
+
+    mod input {
+        use super::super::*;
+
+        #[test]
+        fn next_ai_player_goes_after_human_provides_input() {
+            let mut uno = Uno::new(1,1);
+            // Add some cards to the discard pile and player's hands so we can get the human player
+            // and then the ai to immediately make valid moves without worrying about whether
+            // they've got valid cards in their hands.
+            let last_played_card = Card::from("red 1");
+            uno.discard.push(last_played_card);
+            let valid_next_card = Card::from("red 2");
+            let human_player_num_cards_before = {
+                let human_player = uno.players.iter_mut().find(|player| !player.ai).unwrap();
+                human_player.hand.insert(0, valid_next_card);
+                human_player.hand.len()
+            };
+            let ai_player_num_cards_before = {
+                let ai_player = uno.players.iter_mut().find(|player| player.ai).unwrap();
+                ai_player.hand.insert(0, valid_next_card);
+                ai_player.hand.len()
+            };
+
+            uno.input(Input::Number(1));
+
+            let human_player_num_cards_after = {
+                let human_player = uno.players.iter_mut().find(|player| !player.ai).unwrap();
+                human_player.hand.len()
+            };
+            let ai_player_num_cards_after = {
+                let ai_player = uno.players.iter_mut().find(|player| player.ai).unwrap();
+                ai_player.hand.len()
+            };
+
+            assert_eq!(human_player_num_cards_before - 1, human_player_num_cards_after);
+            assert_eq!(ai_player_num_cards_before - 1, ai_player_num_cards_after);
+        }
+
+        #[test]
+        fn human_goes_after_ai_player_goes() {
+            let mut uno = Uno::new(1,1);
+            // Add some cards to the discard pile and player's hands so we can get the human player
+            // and then the ai to immediately make valid moves without worrying about whether
+            // they've got valid cards in their hands.
+            let last_played_card = Card::from("red 1");
+            uno.discard.push(last_played_card);
+            let valid_next_card = Card::from("red 2");
+            {
+                let human_player = uno.players.iter_mut().find(|player| !player.ai).unwrap();
+                human_player.hand.insert(0, valid_next_card);
+            };
+            {
+                let ai_player = uno.players.iter_mut().find(|player| player.ai).unwrap();
+                ai_player.hand.insert(0, valid_next_card);
+            };
+
+            // It's technically necessary for a human to go first to start the game, so providing this input gets the human player to go.
+            uno.input(Input::Number(1));
+
+            let human_player_num_cards_before = {
+                let human_player = uno.players.iter_mut().find(|player| !player.ai).unwrap();
+                human_player.hand.insert(0, valid_next_card);
+                human_player.hand.len()
+            };
+
+            // This input is for the human player's second turn.
+            uno.input(Input::Number(1));
+
+            let human_player_num_cards_after = {
+                let human_player = uno.players.iter_mut().find(|player| !player.ai).unwrap();
+                human_player.hand.len()
+            };
+
+            assert_eq!(human_player_num_cards_before - 1, human_player_num_cards_after);
         }
     }
 }
