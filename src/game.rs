@@ -471,7 +471,7 @@ fn draw_cards(
     }
 
     // -1 because you have to leave the top card in the discard pile and cant put it in the deck
-    if deck.len() + discard.len() - 1 < num_to_draw as usize {
+    if deck.len() + discard.len() < num_to_draw as usize {
         panic!(
             "There are not enough cards left for the player to draw. {} cards in deck + discard but player wants to draw {}.",
             deck.len() + discard.len(),
@@ -970,12 +970,8 @@ mod tests {
                 ai_player.hand.insert(0, valid_next_card);
             };
 
-            // It's technically necessary for a human to go first to start the game, so providing this input gets the human player to go.
-            uno.input(Input::Number(1));
-
             let human_player_num_cards_before = {
                 let human_player = uno.players.iter_mut().find(|player| !player.ai).unwrap();
-                human_player.hand.insert(0, valid_next_card);
                 human_player.hand.len()
             };
 
