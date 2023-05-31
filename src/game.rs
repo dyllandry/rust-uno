@@ -481,7 +481,11 @@ fn draw_cards(
 
     if deck.len() < num_to_draw as usize {
         for _ in 0..discard.len() {
-            deck.push(discard.pop().unwrap())
+            let mut card = discard.pop().unwrap();
+            if card.wild && card.color.is_some() {
+                card.color = None;
+            }
+            deck.push(card);
         }
         let mut rng = thread_rng();
         deck.shuffle(&mut rng);
@@ -795,6 +799,17 @@ mod tests {
             let mut deck = vec![Card::default()];
             let mut discard = vec![Card::default()];
             draw_cards(&mut hand, 3, &mut deck, &mut discard);
+        }
+
+        #[test]
+        fn resets_wild_card_color_when_cards_move_from_discard_to_deck() {
+            let mut hand: Vec<Card> = Vec::new();
+            let mut deck: Vec<Card> = Vec::new();
+            let old_wild_card = Card::from("wild blue");
+            let mut discard = vec![old_wild_card];
+            draw_cards(&mut hand, 1, &mut deck, &mut discard);
+            let drawn_card = hand.get(0).unwrap();
+            assert!(drawn_card.color.is_none());
         }
     }
 

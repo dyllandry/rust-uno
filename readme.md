@@ -12,7 +12,6 @@
 		- Maybe some sort of index isn't being updated or managed right. Like after drawing some cards and shuffling the deck.
 		- Maybe there's something in the automate_turn code that isn't validating a card right in some cases. Or playing the wrong one.
 			- Like it valides a card, goes to play it, but then picks the wrong card somehow
-- wild cards don't get color reset after deck gets reshuffled
 
 # Todo
 
