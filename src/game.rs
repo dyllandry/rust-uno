@@ -2,7 +2,7 @@ use rand::{seq::SliceRandom, thread_rng};
 
 use crate::{
     card::{Card, Color, DrawEffect, TurnEffect},
-    user_input::Input,
+    user_input::Input, ui::{UI, DisplayedHand, PlayerInstruction, TurnRecap},
 };
 
 /**
@@ -16,6 +16,7 @@ pub struct Uno {
     discard: Vec<Card>,
     wild_card_index_to_pick_color_for: Option<i32>,
     turn_order: TurnOrder,
+    ui: UI,
 }
 
 impl Uno {
@@ -31,6 +32,7 @@ impl Uno {
             discard: Vec::new(),
             wild_card_index_to_pick_color_for: None,
             turn_order: TurnOrder::Forward,
+            ui: UI::default()
         };
 
         game.deck = create_deck();
@@ -62,6 +64,9 @@ impl Uno {
                 game.players.push(ai);
             }
         }
+
+        game.ui.display_hand(1, &game.players.first().unwrap().hand);
+        game.ui.player_instruction = Some(PlayerInstruction::PickCard);
 
         game
     }
@@ -101,30 +106,40 @@ impl Uno {
                         &mut self.deck,
                         &mut self.discard,
                     );
+                    self.ui.display_hand(self.current_player_index + 1, &current_player.hand);
                 },
                 Command::PickWildCardColor(wild_color) => {
                     let current_player = &mut self.players[self.current_player_index as usize];
                     if let Some(wild_index) = self.wild_card_index_to_pick_color_for {
                         let mut wild_card = current_player.hand.remove((wild_index - 1) as usize);
                         wild_card.color = Some(wild_color);
+                        self.ui.player_instruction = None;
                         self.wild_card_index_to_pick_color_for = None;
                         self.play_card(wild_card);
                     };
                 },
                 Command::PickCardToPlay(card_index) => {
+                    self.wild_card_index_to_pick_color_for = None;
                     let current_player = &mut self.players[self.current_player_index as usize];
                     match validate_card_from_index(card_index, &current_player.hand, self.discard.last()) {
                         CardFromIndexValidationResult::Invalid(reason) => {
-                            println!("{}", reason);
+                            self.ui.error = Some(reason);
                         },
                         CardFromIndexValidationResult::Valid => {
                             let card_to_play = current_player.hand.get((card_index - 1) as usize).unwrap();
                             // If the picked a wild card to play, then they next need to pick a color. We
                             // wait for an upcoming Command::PickWildColor(color)
                             if card_to_play.wild {
+                                self.ui.player_instruction = Some(PlayerInstruction::PickWildColor);
                                 self.wild_card_index_to_pick_color_for = Some(card_index);
                             } else {
                                 let card_to_play = current_player.hand.remove((card_index - 1) as usize);
+                                self.ui.last_turn_recap = Some(TurnRecap {
+                                    player: self.current_player_index + 1,
+                                    card: card_to_play,
+                                    drawn_cards: 0,
+                                });
+                                self.ui.error = None;
                                 self.play_card(card_to_play);
                             }
                         }
@@ -135,10 +150,35 @@ impl Uno {
             // Let AI players go
             if !self.game_over() {
                 let mut current_player = self.players.get(self.current_player_index as usize).unwrap();
-                while !self.game_over() && current_player.ai {
-                    self.automate_current_player_turn();
-                    current_player = self.players.get(self.current_player_index as usize).unwrap();
+                if current_player.ai {
+                    while !self.game_over() && current_player.ai {
+                        self.automate_current_player_turn();
+                        current_player = self.players.get(self.current_player_index as usize).unwrap();
+                    }
+                    self.ui.player_instruction = Some(PlayerInstruction::PickCard);
                 }
+                self.ui.display_hand(self.current_player_index + 1, &current_player.hand);
+
+                let players_with_uno = self.players.iter().enumerate().filter_map(|(index, player)| {
+                    if player.hand.len() == 1 {
+                        return Some((index + 1) as i32);
+                    } else {
+                        None
+                    }
+                }).collect();
+
+                self.ui.uno_declarations = players_with_uno;
+            }
+
+            if self.game_over() {
+                let winning_player = self.players.iter().enumerate().find_map(|(index, player)| {
+                    if player.hand.len() == 0 {
+                        return Some((index + 1) as i32);
+                    } else {
+                        return None;
+                    }
+                }).unwrap();
+                self.ui.winning_player = Some(winning_player);
             }
         }
     }
@@ -181,14 +221,6 @@ impl Uno {
 
         self.discard.push(card);
 
-        // Print if someone has uno or won
-        let current_player = &mut self.players[self.current_player_index as usize];
-        if current_player.hand.len() == 1 {
-            println!("Player {} has uno!", self.current_player_index + 1);
-        } else if current_player.hand.len() == 0 {
-            println!("Player {} won!", self.current_player_index + 1);
-        }
-
         // Set next player for next turn
         if !self.game_over() {
             self.current_player_index = next_player_index;
@@ -197,18 +229,20 @@ impl Uno {
 
     fn automate_current_player_turn(&mut self) {
         let player = &mut self.players[self.current_player_index as usize];
+        let mut num_drawn_cards = 0;
         let mut card_index_to_play: Option<usize> = None;
         while card_index_to_play.is_none() {
             let last_played_card: Option<&Card> = self.discard.last();
             if let Some((card_index, _)) = player.hand.iter().enumerate().find(|(_, card)| can_play_card(last_played_card, card)) {
                 card_index_to_play = Some(card_index);
             } else {
-               draw_cards(
-                   &mut player.hand,
-                   1,
-                   &mut self.deck,
-                   &mut self.discard,
-               );
+                num_drawn_cards += 1;
+                draw_cards(
+                    &mut player.hand,
+                    1,
+                    &mut self.deck,
+                    &mut self.discard,
+                );
             }
         }
         let mut card_to_play = player.hand.remove(card_index_to_play.unwrap());
@@ -226,36 +260,18 @@ impl Uno {
             let color_with_most_cards = color_counters.first().unwrap().0;
             card_to_play.color = Some(color_with_most_cards);
         }
+
+        self.ui.last_turn_recap = Some(TurnRecap {
+            player: self.current_player_index + 1,
+            card: card_to_play,
+            drawn_cards: num_drawn_cards,
+        });
+
         self.play_card(card_to_play);
     }
 
     pub fn render(&self) {
-        let current_player = &self.players[self.current_player_index as usize];
-
-        if self.wild_card_index_to_pick_color_for.is_some() {
-            println!("What color do you want your wild card to be?");
-            println!("Enter one of \"R\", \"B\", \"G\", or \"Y\" to pick a color: ");
-            return;
-        }
-
-        println!();
-        println!("It is player {}'s turn.", 1 + self.current_player_index);
-
-        println!("Here are your cards:");
-        for (i, card) in current_player.hand.iter().enumerate() {
-            println!("{}) {}", 1 + i, card);
-        }
-        println!();
-
-        if let Some(last_played_card) = &self.discard.last() {
-            println!("The last played card was {}", last_played_card);
-        }
-
-        if self.discard.len() == 0 {
-            println!("Type a number to play the first card: ")
-        } else {
-            println!("Type a number to play a card, or \"d\" to draw a card: ")
-        }
+        self.ui.render();
     }
 
     pub fn game_over(&self) -> bool {
@@ -276,11 +292,6 @@ fn play_card_draw_effect(
         *num_cards_to_draw,
         deck,
         discard,
-    );
-    println!(
-        "Player {} drew {} cards!",
-        next_player_index + 1,
-        num_cards_to_draw
     );
 }
 
@@ -726,9 +737,6 @@ mod tests {
             fn remove_card_or_panic(card_to_remove: &Card, cards: &mut Vec<Card>) {
                 let found_card_position =
                     cards.iter().position(|card: &Card| card == card_to_remove);
-                if found_card_position.is_none() {
-                    println!("Could not find card: {:?}", card_to_remove);
-                }
                 cards.remove(found_card_position.unwrap());
             }
 
