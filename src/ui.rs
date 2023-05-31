@@ -23,14 +23,18 @@ impl UI {
             if last_turn_recap.drawn_cards > 0 {
                 println!("Player {} drew {} cards!", last_turn_recap.player, last_turn_recap.drawn_cards);
             }
-            println!("Player {} played a {}!", last_turn_recap.player, last_turn_recap.card);
+            for played_card in &last_turn_recap.played_cards {
+                println!("Player {} played a {}!", last_turn_recap.player, played_card);
+            }
             println!();
         }
 
-        for player in &self.uno_declarations {
-            println!("Player {} has uno!", player);
+        if self.uno_declarations.len() > 0 {
+            for player in &self.uno_declarations {
+                println!("Player {} has uno!", player);
+            }
+            println!();
         }
-        println!();
 
         if let Some(displayed_hand) = &self.displayed_hand {
             println!("Player {}'s cards:", displayed_hand.player);
@@ -77,7 +81,7 @@ impl UI {
 
 pub struct TurnRecap {
     pub player: i32,
-    pub card: Card,
+    pub played_cards: Vec<Card>,
     pub drawn_cards: i32,
 }
 

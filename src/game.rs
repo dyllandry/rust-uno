@@ -2,7 +2,7 @@ use rand::{seq::SliceRandom, thread_rng};
 
 use crate::{
     card::{Card, Color, DrawEffect, TurnEffect},
-    user_input::Input, ui::{UI, DisplayedHand, PlayerInstruction, TurnRecap},
+    user_input::Input, ui::{UI, PlayerInstruction, TurnRecap},
 };
 
 /**
@@ -123,6 +123,7 @@ impl Uno {
                     let current_player = &mut self.players[self.current_player_index as usize];
                     match validate_card_from_index(card_index, &current_player.hand, self.discard.last()) {
                         CardFromIndexValidationResult::Invalid(reason) => {
+                            self.wild_card_index_to_pick_color_for = None;
                             self.ui.error = Some(reason);
                         },
                         CardFromIndexValidationResult::Valid => {
@@ -136,12 +137,12 @@ impl Uno {
                                 let card_to_play = current_player.hand.remove((card_index - 1) as usize);
                                 self.ui.last_turn_recap = Some(TurnRecap {
                                     player: self.current_player_index + 1,
-                                    card: card_to_play,
+                                    played_cards: vec![card_to_play],
                                     drawn_cards: 0,
                                 });
-                                self.ui.error = None;
                                 self.play_card(card_to_play);
                             }
+                            self.ui.error = None;
                         }
                     }
                 },
@@ -151,11 +152,18 @@ impl Uno {
             if !self.game_over() {
                 let mut current_player = self.players.get(self.current_player_index as usize).unwrap();
                 if current_player.ai {
+                    // The player may go many times in a row, so we add up each turn's recap into a
+                    // single larger recap that represents the everything the player did before the
+                    // next player got to go.
+                    let mut player_turn_recap: TurnRecap = TurnRecap { player: self.current_player_index + 1, played_cards: vec![], drawn_cards: 0 };
                     while !self.game_over() && current_player.ai {
-                        self.automate_current_player_turn();
+                        let turn_recap = self.automate_current_player_turn();
+                        player_turn_recap.drawn_cards += turn_recap.drawn_cards;
+                        player_turn_recap.played_cards = player_turn_recap.played_cards.iter().cloned().chain(turn_recap.played_cards.iter().cloned()).collect();
                         current_player = self.players.get(self.current_player_index as usize).unwrap();
                     }
                     self.ui.player_instruction = Some(PlayerInstruction::PickCard);
+                    self.ui.last_turn_recap = Some(player_turn_recap);
                 }
                 self.ui.display_hand(self.current_player_index + 1, &current_player.hand);
 
@@ -213,7 +221,6 @@ impl Uno {
             play_card_draw_effect(
                 &draw_effect,
                 &mut self.players[next_player_index as usize],
-                next_player_index,
                 &mut self.deck,
                 &mut self.discard
             );
@@ -227,7 +234,7 @@ impl Uno {
         }
     }
 
-    fn automate_current_player_turn(&mut self) {
+    fn automate_current_player_turn(&mut self) -> TurnRecap {
         let player = &mut self.players[self.current_player_index as usize];
         let mut num_drawn_cards = 0;
         let mut card_index_to_play: Option<usize> = None;
@@ -261,13 +268,15 @@ impl Uno {
             card_to_play.color = Some(color_with_most_cards);
         }
 
-        self.ui.last_turn_recap = Some(TurnRecap {
+        let turn_recap = TurnRecap {
             player: self.current_player_index + 1,
-            card: card_to_play,
+            played_cards: vec![card_to_play],
             drawn_cards: num_drawn_cards,
-        });
+        };
 
         self.play_card(card_to_play);
+
+        return turn_recap;
     }
 
     pub fn render(&self) {
@@ -282,7 +291,6 @@ impl Uno {
 fn play_card_draw_effect(
     draw_effect: &DrawEffect,
     next_player: &mut Player,
-    next_player_index: i32,
     deck: &mut Vec<Card>,
     discard: &mut Vec<Card>
 ) {
@@ -827,7 +835,7 @@ mod tests {
             let mut next_player = Player::default();
             let draw_effect = DrawEffect::Draw(2);
 
-            play_card_draw_effect(&draw_effect, &mut next_player, 1, &mut deck, &mut discard);
+            play_card_draw_effect(&draw_effect, &mut next_player, &mut deck, &mut discard);
 
             assert_eq!(deck.len(), 1);
             assert_eq!(next_player.hand.len(), 2);
